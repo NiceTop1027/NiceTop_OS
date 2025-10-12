@@ -18,21 +18,43 @@ static inline uint8_t inb(uint16_t port) {
     return ret;
 }
 
-// US QWERTY keyboard layout
-static const char scancode_to_ascii[] = {
-    0, 0, '1', '2', '3', '4', '5', '6', '7', '8', '9', '0', '-', '=', '\b',
-    '\t', 'q', 'w', 'e', 'r', 't', 'y', 'u', 'i', 'o', 'p', '[', ']', '\n',
-    0, 'a', 's', 'd', 'f', 'g', 'h', 'j', 'k', 'l', ';', '\'', '`',
-    0, '\\', 'z', 'x', 'c', 'v', 'b', 'n', 'm', ',', '.', '/', 0,
-    '*', 0, ' '
+// US QWERTY keyboard layout - Extended
+static const char scancode_to_ascii[128] = {
+    0,    0,    '1',  '2',  '3',  '4',  '5',  '6',   // 0-7
+    '7',  '8',  '9',  '0',  '-',  '=',  '\b', '\t',  // 8-15
+    'q',  'w',  'e',  'r',  't',  'y',  'u',  'i',   // 16-23
+    'o',  'p',  '[',  ']',  '\n', 0,    'a',  's',   // 24-31
+    'd',  'f',  'g',  'h',  'j',  'k',  'l',  ';',   // 32-39
+    '\'', '`',  0,    '\\', 'z',  'x',  'c',  'v',   // 40-47
+    'b',  'n',  'm',  ',',  '.',  '/',  0,    '*',   // 48-55
+    0,    ' ',  0,    0,    0,    0,    0,    0,     // 56-63
+    0,    0,    0,    0,    0,    0,    0,    '7',   // 64-71 (F-keys, numpad)
+    '8',  '9',  '-',  '4',  '5',  '6',  '+',  '1',   // 72-79
+    '2',  '3',  '0',  '.',  0,    0,    0,    0,     // 80-87
+    0,    0,    0,    0,    0,    0,    0,    0,     // 88-95
+    0,    0,    0,    0,    0,    0,    0,    0,     // 96-103
+    0,    0,    0,    0,    0,    0,    0,    0,     // 104-111
+    0,    0,    0,    0,    0,    0,    0,    0,     // 112-119
+    0,    0,    0,    0,    0,    0,    0,    0      // 120-127
 };
 
-static const char scancode_to_ascii_shift[] = {
-    0, 0, '!', '@', '#', '$', '%', '^', '&', '*', '(', ')', '_', '+', '\b',
-    '\t', 'Q', 'W', 'E', 'R', 'T', 'Y', 'U', 'I', 'O', 'P', '{', '}', '\n',
-    0, 'A', 'S', 'D', 'F', 'G', 'H', 'J', 'K', 'L', ':', '"', '~',
-    0, '|', 'Z', 'X', 'C', 'V', 'B', 'N', 'M', '<', '>', '?', 0,
-    '*', 0, ' '
+static const char scancode_to_ascii_shift[128] = {
+    0,    0,    '!',  '@',  '#',  '$',  '%',  '^',   // 0-7
+    '&',  '*',  '(',  ')',  '_',  '+',  '\b', '\t',  // 8-15
+    'Q',  'W',  'E',  'R',  'T',  'Y',  'U',  'I',   // 16-23
+    'O',  'P',  '{',  '}',  '\n', 0,    'A',  'S',   // 24-31
+    'D',  'F',  'G',  'H',  'J',  'K',  'L',  ':',   // 32-39
+    '"',  '~',  0,    '|',  'Z',  'X',  'C',  'V',   // 40-47
+    'B',  'N',  'M',  '<',  '>',  '?',  0,    '*',   // 48-55
+    0,    ' ',  0,    0,    0,    0,    0,    0,     // 56-63
+    0,    0,    0,    0,    0,    0,    0,    '7',   // 64-71
+    '8',  '9',  '-',  '4',  '5',  '6',  '+',  '1',   // 72-79
+    '2',  '3',  '0',  '.',  0,    0,    0,    0,     // 80-87
+    0,    0,    0,    0,    0,    0,    0,    0,     // 88-95
+    0,    0,    0,    0,    0,    0,    0,    0,     // 96-103
+    0,    0,    0,    0,    0,    0,    0,    0,     // 104-111
+    0,    0,    0,    0,    0,    0,    0,    0,     // 112-119
+    0,    0,    0,    0,    0,    0,    0,    0      // 120-127
 };
 
 static int shift_pressed = 0;
@@ -86,6 +108,18 @@ static void keyboard_handler(struct registers* regs) {
     } else if (scancode == 0x1C) {
         // Enter
         c = '\n';
+    } else if (scancode == 0x48) {
+        // Up arrow
+        c = 0x10; // Special code for up
+    } else if (scancode == 0x50) {
+        // Down arrow
+        c = 0x11; // Special code for down
+    } else if (scancode == 0x4B) {
+        // Left arrow
+        c = 0x12; // Special code for left
+    } else if (scancode == 0x4D) {
+        // Right arrow
+        c = 0x13; // Special code for right
     } else if (scancode < sizeof(scancode_to_ascii)) {
         // Regular key
         if (shift_pressed) {
@@ -263,5 +297,21 @@ char keyboard_getchar(void) {
 }
 
 int keyboard_available(void) {
-    return buffer_start != buffer_end;
+    // Check buffer first
+    if (buffer_start != buffer_end) {
+        return 1;
+    }
+    
+    // Poll for new data
+    uint8_t status = inb(KEYBOARD_STATUS_PORT);
+    if (status & 0x01) {
+        // Data available, read it
+        char c = keyboard_poll();
+        if (c != 0) {
+            buffer_add(c);
+            return 1;
+        }
+    }
+    
+    return 0;
 }
